@@ -17,14 +17,14 @@
 
 library(shiny)
 library(bslib)
-library(tidyverse)
-library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stringr)
 library(plotly)
 library(scales)
 library(shinycssloaders)
 library(DT)
 library(randomForest)
-library(pROC)
 
 # ── Column name vectors (used throughout) ─────────────────────────────────────
 spend_cols   <- c("MntWines", "MntFruits", "MntMeatProducts",
@@ -45,174 +45,200 @@ kpi_box <- function(value, label, colour = "#2d5016") {
       div(class = "kpi-label", label))
 }
 
-# Consistent ggplot theme for all app charts — store palette
-theme_app <- function(base_size = 11) {
-  theme_minimal(base_size = base_size) +
-    theme(
-      plot.background  = element_rect(fill = "#ffffff", colour = NA),
-      panel.background = element_rect(fill = "#ffffff", colour = NA),
-      panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(colour = "#ede8df", linewidth = 0.5),
-      axis.text        = element_text(colour = "#7a6a52", size = 10,
-                                      family = "Lato"),
-      axis.title       = element_text(colour = "#3d2b1a", size = 11,
-                                      family = "Lato"),
-      plot.margin      = margin(12, 16, 12, 16),
-      legend.text      = element_text(colour = "#7a6a52", family = "Lato",
-                                      size = 10),
-      legend.title     = element_text(colour = "#3d2b1a", family = "Lato",
-                                      size = 10)
+# ── Shared plotly layout defaults ─────────────────────────────────────────────
+plt_layout <- list(
+  plot_bgcolor  = "#ffffff",
+  paper_bgcolor = "#ffffff",
+  font          = list(color = "#3d2b1a"),
+  margin        = list(t = 30, b = 50, l = 60, r = 20)
+)
+
+apply_layout <- function(p, ...) {
+  p %>% layout(plot_bgcolor  = plt_layout$plot_bgcolor,
+               paper_bgcolor = plt_layout$paper_bgcolor,
+               font          = plt_layout$font,
+               ...) %>%
+    config(displayModeBar = FALSE)
+}
+
+# ── Tab 1: plot functions (native plotly) ─────────────────────────────────────
+
+plot_spend_by_edu <- function(df) {
+  d <- df %>%
+    group_by(Education) %>%
+    summarise(avg_spend = mean(TotalSpend), n = n(), .groups = "drop")
+  cols <- colorRampPalette(c("#e8f0d0", "#2d5016"))(nrow(d))
+  plot_ly(d,
+          x         = ~as.character(Education),
+          y         = ~avg_spend,
+          type      = "bar",
+          marker    = list(color = cols),
+          text      = ~paste0(as.character(Education),
+                              "\nAvg spend: $", round(avg_spend),
+                              "\nn = ", n),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis = list(title = "", categoryorder = "array",
+                   categoryarray = as.character(d$Education)),
+      yaxis = list(title = "Avg 2-year spend ($)", tickprefix = "$"),
+      showlegend = FALSE
     )
 }
 
-# Colour ramp for charts (store green palette)
-GREEN_RAMP <- c("#e8f0d0", "#a8c87a", "#3d6b1e", "#2d5016", "#1a3009")
-
-# ── Tab 1: plot functions ──────────────────────────────────────────────────────
-
-plot_spend_by_edu <- function(df) {
-  df %>%
-    group_by(Education) %>%
-    summarise(
-      avg_spend = mean(TotalSpend),
-      n         = n(),
-      .groups   = "drop"
-    ) %>%
-    ggplot(aes(x = Education, y = avg_spend,
-               fill   = as.numeric(Education),
-               text   = paste0(Education, "\nAvg spend: $", round(avg_spend),
-                               "\nn = ", n))) +
-    geom_col() +
-    geom_text(aes(label = paste0("$", round(avg_spend))),
-              vjust = -0.4, size = 3.2, colour = "#3d2b1a") +
-    scale_fill_gradient(low = "#e8f0d0", high = "#2d5016", guide = "none") +
-    scale_y_continuous(labels = label_dollar(),
-                       expand = expansion(mult = c(0, .15))) +
-    labs(x = NULL, y = "Avg 2-year spend ($)") +
-    theme_app()
-}
-
 plot_income_spend <- function(df) {
-  df %>%
-    mutate(children_label = if_else(as.logical(HasChildren),
-                                    "Has children", "No children")) %>%
-    ggplot(aes(x = Income, y = TotalSpend,
-               colour = children_label,
-               text   = paste0("Income: $", scales::comma(Income),
-                               "\nSpend: $", TotalSpend,
-                               "\nAge: ", Age,
-                               "\nEducation: ", Education))) +
-    geom_point(alpha = 0.35, size = 1.8) +
-    geom_smooth(method = "lm", se = FALSE, linewidth = 1.1) +
-    scale_x_continuous(labels = label_dollar(scale = 1/1000, suffix = "k")) +
-    scale_y_continuous(labels = label_dollar()) +
-    scale_colour_manual(
-      values = c("Has children" = "#a8c87a", "No children" = "#2d5016")
-    ) +
-    labs(x = "Annual income", y = "Total 2-year spend ($)", colour = NULL) +
-    theme_app() +
-    theme(legend.position = "top")
+  d <- df %>%
+    mutate(grp = if_else(as.logical(HasChildren), "Has children", "No children"))
+  no_k  <- d[d$grp == "No children",  ]
+  has_k <- d[d$grp == "Has children", ]
+  x_rng <- seq(min(d$Income), max(d$Income), length.out = 100)
+  lm_no  <- tryCatch(lm(TotalSpend ~ Income, data = no_k),  error = function(e) NULL)
+  lm_yes <- tryCatch(lm(TotalSpend ~ Income, data = has_k), error = function(e) NULL)
+  p <- plot_ly() %>%
+    add_markers(data = no_k,  x = ~Income, y = ~TotalSpend, name = "No children",
+                marker    = list(color = "#2d5016", opacity = 0.35, size = 5),
+                text      = ~paste0("Income: $", scales::comma(Income),
+                                    "\nSpend: $", TotalSpend,
+                                    "\nAge: ", Age, "\nEducation: ", as.character(Education)),
+                hoverinfo = "text") %>%
+    add_markers(data = has_k, x = ~Income, y = ~TotalSpend, name = "Has children",
+                marker    = list(color = "#a8c87a", opacity = 0.35, size = 5),
+                text      = ~paste0("Income: $", scales::comma(Income),
+                                    "\nSpend: $", TotalSpend,
+                                    "\nAge: ", Age, "\nEducation: ", as.character(Education)),
+                hoverinfo = "text")
+  if (!is.null(lm_no))
+    p <- p %>% add_lines(x = x_rng, y = predict(lm_no,  data.frame(Income = x_rng)),
+                         name = "No children trend", showlegend = FALSE, hoverinfo = "skip",
+                         line = list(color = "#2d5016", width = 2))
+  if (!is.null(lm_yes))
+    p <- p %>% add_lines(x = x_rng, y = predict(lm_yes, data.frame(Income = x_rng)),
+                         name = "Has children trend", showlegend = FALSE, hoverinfo = "skip",
+                         line = list(color = "#a8c87a", width = 2))
+  p %>% apply_layout(
+    xaxis  = list(title = "Annual income", tickprefix = "$"),
+    yaxis  = list(title = "Total 2-year spend ($)", tickprefix = "$"),
+    legend = list(orientation = "h", y = 1.12)
+  )
 }
 
 plot_age_hist <- function(df) {
-  ggplot(df, aes(x = Age)) +
-    geom_histogram(binwidth = 4, fill = "#3d6b1e", colour = "white") +
-    geom_vline(xintercept = median(df$Age),
-               linetype = "dashed", colour = "#7a6a52") +
-    annotate("text", x = median(df$Age) + 1, y = Inf,
-             label = paste0("median: ", round(median(df$Age))),
-             hjust = 0, vjust = 1.5, size = 3, colour = "#7a6a52") +
-    labs(x = "Age", y = "Count") +
-    theme_app()
+  med_age <- median(df$Age)
+  plot_ly(df, x = ~Age, type = "histogram",
+          xbins     = list(size = 4),
+          marker    = list(color = "#3d6b1e", line = list(color = "white", width = 1)),
+          hovertemplate = "Age: %{x}<br>Count: %{y}<extra></extra>") %>%
+    apply_layout(
+      xaxis  = list(title = "Age"),
+      yaxis  = list(title = "Count"),
+      showlegend = FALSE,
+      shapes = list(list(type = "line", x0 = med_age, x1 = med_age,
+                         y0 = 0, y1 = 1, yref = "paper",
+                         line = list(color = "#7a6a52", dash = "dash", width = 1.5))),
+      annotations = list(list(x = med_age + 1, y = 0.95, yref = "paper",
+                               text = paste0("median: ", round(med_age)),
+                               showarrow = FALSE, xanchor = "left",
+                               font = list(color = "#7a6a52", size = 11)))
+    )
 }
 
 plot_marital <- function(df) {
-  df %>%
-    count(MaritalSimple) %>%
-    mutate(pct = n / sum(n) * 100) %>%
-    ggplot(aes(x = reorder(MaritalSimple, n), y = pct,
-               text = paste0(MaritalSimple, ": ", round(pct, 1), "%\nn = ", n))) +
-    geom_col(fill = "#3d6b1e") +
-    geom_text(aes(label = paste0(round(pct, 1), "%")), hjust = -0.1, size = 3.2) +
-    coord_flip() +
-    scale_y_continuous(expand = expansion(mult = c(0, .2))) +
-    labs(x = NULL, y = "% of customers") +
-    theme_app()
+  d <- df %>% count(MaritalSimple) %>%
+    mutate(pct = n / sum(n) * 100, ms = as.character(MaritalSimple)) %>%
+    arrange(n)
+  plot_ly(d, y = ~ms, x = ~pct, type = "bar", orientation = "h",
+          marker    = list(color = "#3d6b1e"),
+          text      = ~paste0(ms, ": ", round(pct, 1), "%\nn = ", n),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis = list(title = "% of customers"),
+      yaxis = list(title = "", categoryorder = "array", categoryarray = d$ms),
+      showlegend = FALSE,
+      margin = list(t = 20, b = 40, l = 90, r = 40)
+    )
 }
 
-# ── Tab 2: plot functions ──────────────────────────────────────────────────────
+# ── Tab 2: plot functions (native plotly) ─────────────────────────────────────
 
 plot_spend_share <- function(df) {
-  df %>%
+  d <- df %>%
     summarise(across(all_of(spend_cols), sum)) %>%
     pivot_longer(everything(), names_to = "cat", values_to = "total") %>%
-    mutate(
-      pct       = total / sum(total) * 100,
-      cat       = str_remove(cat, "Mnt") %>%
-                  str_replace("Products", "") %>%
-                  str_trim(),
-      cat       = factor(cat, levels = cat[order(pct)]),
-      # Use character string, not logical — ggplotly can't handle logical fills
-      highlight = if_else(pct > 20, "major", "minor")
-    ) %>%
-    ggplot(aes(x = cat, y = pct,
-               fill = highlight,
-               text = paste0(cat, ": ", round(pct, 1), "%"))) +
-    geom_col() +
-    geom_text(aes(label = paste0(round(pct, 1), "%")), hjust = -0.1, size = 3.2) +
-    coord_flip() +
-    scale_fill_manual(values = c("minor" = "#a8c87a", "major" = "#2d5016"),
-                      guide = "none") +
-    scale_y_continuous(limits = c(0, 60), expand = c(0, 0)) +
-    labs(x = NULL, y = "% of total spend") +
-    theme_app()
+    mutate(pct = total / sum(total) * 100,
+           cat = str_remove(cat, "Mnt") %>% str_replace("Products", "") %>% str_trim()) %>%
+    arrange(pct)
+  cols <- if_else(d$pct > 20, "#2d5016", "#a8c87a")
+  plot_ly(d, y = ~cat, x = ~pct, type = "bar", orientation = "h",
+          marker    = list(color = cols),
+          text      = ~paste0(cat, ": ", round(pct, 1), "%"),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis = list(title = "% of total spend", range = c(0, 62)),
+      yaxis = list(title = "", categoryorder = "array", categoryarray = d$cat),
+      showlegend = FALSE,
+      margin = list(t = 20, b = 40, l = 80, r = 20)
+    )
 }
 
 plot_spend_kids <- function(df) {
-  df %>%
+  d <- df %>%
     filter(!is.na(HasChildren)) %>%
-    mutate(HasChildren = as.logical(HasChildren)) %>%
-    group_by(HasChildren) %>%
+    mutate(grp = if_else(as.logical(HasChildren), "Has children", "No children")) %>%
+    group_by(grp) %>%
     summarise(across(all_of(spend_cols), mean), .groups = "drop") %>%
-    pivot_longer(-HasChildren, names_to = "cat", values_to = "avg") %>%
-    mutate(
-      cat         = str_remove(cat, "Mnt") %>% str_replace("Products", "") %>% str_trim(),
-      HasChildren = if_else(HasChildren, "Has children", "No children")
-    ) %>%
-    ggplot(aes(x = cat, y = avg, fill = HasChildren,
-               text = paste0(HasChildren, "\n", cat, ": $", round(avg)))) +
-    geom_col(position = "dodge") +
-    scale_fill_manual(values = c("Has children" = "#a8c87a",
-                                 "No children"  = "#2d5016")) +
-    scale_y_continuous(labels = label_dollar()) +
-    labs(x = NULL, y = "Avg spend ($)", fill = NULL) +
-    theme_app() +
-    theme(legend.position = "top")
+    pivot_longer(-grp, names_to = "cat", values_to = "avg") %>%
+    mutate(cat = str_remove(cat, "Mnt") %>% str_replace("Products", "") %>% str_trim())
+  d_no  <- d %>% filter(grp == "No children")
+  d_yes <- d %>% filter(grp == "Has children")
+  plot_ly() %>%
+    add_bars(data = d_no,  x = ~cat, y = ~avg, name = "No children",
+             marker    = list(color = "#2d5016"),
+             text      = ~paste0("No children\n", cat, ": $", round(avg)),
+             hoverinfo = "text") %>%
+    add_bars(data = d_yes, x = ~cat, y = ~avg, name = "Has children",
+             marker    = list(color = "#a8c87a"),
+             text      = ~paste0("Has children\n", cat, ": $", round(avg)),
+             hoverinfo = "text") %>%
+    apply_layout(
+      barmode = "group",
+      xaxis   = list(title = ""),
+      yaxis   = list(title = "Avg spend ($)", tickprefix = "$"),
+      legend  = list(orientation = "h", y = 1.12)
+    )
 }
 
 plot_channels <- function(df) {
-  df %>%
+  d <- df %>%
     filter(!is.na(IncomeTier)) %>%
-    mutate(IncomeTier = factor(as.character(IncomeTier),
-                               levels = c("Low", "Mid", "High"))) %>%
+    mutate(IncomeTier = factor(as.character(IncomeTier), levels = c("Low", "Mid", "High"))) %>%
     group_by(IncomeTier) %>%
     summarise(across(all_of(purchase_channel_cols), mean), .groups = "drop") %>%
-    filter(!is.na(IncomeTier)) %>%
     pivot_longer(-IncomeTier, names_to = "channel", values_to = "avg") %>%
-    mutate(
-      channel = str_remove(channel, "Num|Purchases") %>% str_trim()
-    ) %>%
-    ggplot(aes(x = channel, y = avg, fill = IncomeTier,
-               text = paste0(IncomeTier, " income\n",
-                             channel, ": ", round(avg, 1), " purchases/yr"))) +
-    geom_col(position = "dodge") +
-    scale_fill_manual(values = c(Low = "#e8f0d0", Mid = "#3d6b1e", High = "#1a3009")) +
-    labs(x = NULL, y = "Avg purchases per year", fill = "Income tier") +
-    theme_app() +
-    theme(legend.position = "top")
+    mutate(channel = str_remove(channel, "Num|Purchases") %>% str_trim())
+  plot_ly() %>%
+    add_bars(data = d %>% filter(IncomeTier == "Low"),
+             x = ~channel, y = ~avg, name = "Low",
+             marker    = list(color = "#e8f0d0"),
+             text      = ~paste0("Low income\n", channel, ": ", round(avg, 1), " purchases/yr"),
+             hoverinfo = "text") %>%
+    add_bars(data = d %>% filter(IncomeTier == "Mid"),
+             x = ~channel, y = ~avg, name = "Mid",
+             marker    = list(color = "#3d6b1e"),
+             text      = ~paste0("Mid income\n", channel, ": ", round(avg, 1), " purchases/yr"),
+             hoverinfo = "text") %>%
+    add_bars(data = d %>% filter(IncomeTier == "High"),
+             x = ~channel, y = ~avg, name = "High",
+             marker    = list(color = "#1a3009"),
+             text      = ~paste0("High income\n", channel, ": ", round(avg, 1), " purchases/yr"),
+             hoverinfo = "text") %>%
+    apply_layout(
+      barmode = "group",
+      xaxis   = list(title = ""),
+      yaxis   = list(title = "Avg purchases per year"),
+      legend  = list(orientation = "h", y = 1.12, title = list(text = "Income tier"))
+    )
 }
 
-# ── Tab 3: plot functions ──────────────────────────────────────────────────────
+# ── Tab 3: plot functions (native plotly) ─────────────────────────────────────
 
 plot_campaign_rates <- function(df) {
   rates <- df %>%
@@ -220,97 +246,94 @@ plot_campaign_rates <- function(df) {
               Response = mean(Response == "Yes") * 100) %>%
     pivot_longer(everything(), names_to = "campaign", values_to = "rate") %>%
     mutate(
-      label    = c("Cmp 1", "Cmp 2", "Cmp 3", "Cmp 4", "Cmp 5", "Final"),
-      is_low   = rate < 4,
-      is_final = campaign == "Response"
+      label = c("Cmp 1", "Cmp 2", "Cmp 3", "Cmp 4", "Cmp 5", "Final"),
+      color = case_when(campaign == "Response" ~ "#2d5016",
+                        rate < 4               ~ "#8b2020",
+                        TRUE                   ~ "#3d6b1e")
     )
-
   overall_avg <- mean(rates$rate)
-
-  ggplot(rates, aes(x = label, y = rate,
-                    fill  = case_when(is_final ~ "final",
-                                      is_low   ~ "low",
-                                      TRUE     ~ "normal"),
-                    text  = paste0(label, ": ", round(rate, 1), "% accepted"))) +
-    geom_col() +
-    geom_hline(yintercept = overall_avg,
-               linetype = "dashed", colour = "#7a6a52", linewidth = 0.7) +
-    annotate("text", x = 0.6, y = overall_avg + 0.4,
-             label = "avg", size = 3, colour = "#7a6a52", hjust = 0) +
-    scale_fill_manual(
-      values = c(final = "#2d5016", low = "#8b2020", normal = "#3d6b1e"),
-      guide  = "none"
-    ) +
-    scale_y_continuous(labels = function(x) paste0(x, "%"),
-                       expand = expansion(mult = c(0, .15))) +
-    labs(x = NULL, y = "Acceptance rate") +
-    theme_app()
+  plot_ly(rates, x = ~label, y = ~rate, type = "bar",
+          marker    = list(color = ~color),
+          text      = ~paste0(label, ": ", round(rate, 1), "% accepted"),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis  = list(title = ""),
+      yaxis  = list(title = "Acceptance rate", ticksuffix = "%"),
+      showlegend = FALSE,
+      shapes = list(list(type = "line", x0 = 0, x1 = 1, xref = "paper",
+                         y0 = overall_avg, y1 = overall_avg,
+                         line = list(color = "#7a6a52", dash = "dash", width = 1.5))),
+      annotations = list(list(x = 0.02, y = overall_avg + 0.4, xref = "paper",
+                               text = "avg", showarrow = FALSE, xanchor = "left",
+                               font = list(color = "#7a6a52", size = 11)))
+    )
 }
 
 plot_responder_profile <- function(df) {
-  df %>%
+  d <- df %>%
     group_by(Response) %>%
-    summarise(
-      `Avg income ($k)`    = mean(Income) / 1000,
-      `Avg spend ($)`      = mean(TotalSpend),
-      `Avg recency (days)` = mean(Recency),
-      `Avg tenure (days)`  = mean(Tenure),
-      `Avg camp. history`  = mean(CampaignHistory),
-      .groups = "drop"
-    ) %>%
-    pivot_longer(-Response, names_to = "metric", values_to = "value") %>%
-    ggplot(aes(x = metric, y = value, fill = Response,
-               text = paste0(Response, "\n", metric, ": ", round(value, 1)))) +
-    geom_col(position = "dodge") +
-    coord_flip() +
-    scale_fill_manual(values = c(Yes = "#2d5016", No = "#e8f0d0")) +
-    labs(x = NULL, y = NULL, fill = "Responded?") +
-    theme_app() +
-    theme(legend.position = "top")
+    summarise(`Avg income ($k)`    = mean(Income) / 1000,
+              `Avg spend ($)`      = mean(TotalSpend),
+              `Avg recency (days)` = mean(Recency),
+              `Avg tenure (days)`  = mean(Tenure),
+              `Avg camp. history`  = mean(CampaignHistory),
+              .groups = "drop") %>%
+    pivot_longer(-Response, names_to = "metric", values_to = "value")
+  plot_ly() %>%
+    add_bars(data = d %>% filter(Response == "Yes"),
+             y = ~metric, x = ~value, name = "Yes", orientation = "h",
+             marker    = list(color = "#2d5016"),
+             text      = ~paste0("Yes\n", metric, ": ", round(value, 1)),
+             hoverinfo = "text") %>%
+    add_bars(data = d %>% filter(Response == "No"),
+             y = ~metric, x = ~value, name = "No", orientation = "h",
+             marker    = list(color = "#e8f0d0"),
+             text      = ~paste0("No\n", metric, ": ", round(value, 1)),
+             hoverinfo = "text") %>%
+    apply_layout(
+      barmode = "group",
+      xaxis   = list(title = ""),
+      yaxis   = list(title = ""),
+      legend  = list(orientation = "h", y = 1.12, title = list(text = "Responded?")),
+      margin  = list(t = 40, b = 20, l = 130, r = 20)
+    )
 }
 
 plot_recency_response <- function(df) {
-  df %>%
-    mutate(RecencyBucket = cut(Recency,
-                               breaks = c(-1, 25, 50, 75, 100),
-                               labels = c("0\u201325", "26\u201350", "51\u201375", "76\u2013100"))) %>%
+  d <- df %>%
+    mutate(RecencyBucket = cut(Recency, breaks = c(-1, 25, 50, 75, 100),
+                               labels = c("0\u201325", "26\u201350",
+                                          "51\u201375", "76\u2013100"))) %>%
     group_by(RecencyBucket) %>%
-    summarise(
-      rate = mean(Response == "Yes") * 100,
-      n    = n(),
-      .groups = "drop"
-    ) %>%
-    ggplot(aes(x = RecencyBucket, y = rate,
-               text = paste0("Recency: ", RecencyBucket, " days\n",
-                             "Response rate: ", round(rate, 1), "%\n",
-                             "n = ", n))) +
-    geom_col(fill = "#3d6b1e") +
-    geom_text(aes(label = paste0(round(rate, 1), "%")), vjust = -0.4, size = 3.2) +
-    scale_y_continuous(labels = function(x) paste0(x, "%"),
-                       expand = expansion(mult = c(0, .18))) +
-    labs(x = "Days since last purchase", y = "Response rate (%)") +
-    theme_app()
+    summarise(rate = mean(Response == "Yes") * 100, n = n(), .groups = "drop")
+  lvls <- c("0\u201325", "26\u201350", "51\u201375", "76\u2013100")
+  plot_ly(d, x = ~as.character(RecencyBucket), y = ~rate, type = "bar",
+          marker    = list(color = "#3d6b1e"),
+          text      = ~paste0("Recency: ", RecencyBucket, " days\n",
+                              "Response rate: ", round(rate, 1), "%\nn = ", n),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis = list(title = "Days since last purchase",
+                   categoryorder = "array", categoryarray = lvls),
+      yaxis = list(title = "Response rate (%)", ticksuffix = "%"),
+      showlegend = FALSE
+    )
 }
 
 plot_camp_history_response <- function(df) {
-  df %>%
+  d <- df %>%
     group_by(CampaignHistory) %>%
-    summarise(
-      rate = mean(Response == "Yes") * 100,
-      n    = n(),
-      .groups = "drop"
-    ) %>%
-    ggplot(aes(x = factor(CampaignHistory), y = rate,
-               text = paste0("Previous accepts: ", CampaignHistory,
-                             "\nResponse rate: ", round(rate, 1), "%\n",
-                             "n = ", n))) +
-    geom_col(fill = "#2d5016") +
-    geom_text(aes(label = paste0(round(rate, 1), "%")), vjust = -0.4, size = 3.2) +
-    scale_y_continuous(labels = function(x) paste0(x, "%"),
-                       expand = expansion(mult = c(0, .18))) +
-    labs(x = "Campaigns accepted previously (out of 5)",
-         y = "Response rate (%)") +
-    theme_app()
+    summarise(rate = mean(Response == "Yes") * 100, n = n(), .groups = "drop")
+  plot_ly(d, x = ~as.character(CampaignHistory), y = ~rate, type = "bar",
+          marker    = list(color = "#2d5016"),
+          text      = ~paste0("Previous accepts: ", CampaignHistory,
+                              "\nResponse rate: ", round(rate, 1), "%\nn = ", n),
+          hoverinfo = "text") %>%
+    apply_layout(
+      xaxis = list(title = "Campaigns accepted previously (out of 5)"),
+      yaxis = list(title = "Response rate (%)", ticksuffix = "%"),
+      showlegend = FALSE
+    )
 }
 
 # ── Load clean data ───────────────────────────────────────────────────────────
@@ -848,8 +871,7 @@ server <- function(input, output, session) {
       df <- tab1_data()
       validate(need(nrow(df) >= 5,
                     "Not enough data for current selection. Broaden your filters."))
-      ggplotly(plot_spend_by_edu(df), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_spend_by_edu(df)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -862,9 +884,7 @@ server <- function(input, output, session) {
       df <- tab1_data()
       validate(need(nrow(df) >= 5,
                     "Not enough data for current selection. Broaden your filters."))
-      ggplotly(plot_income_spend(df), tooltip = "text") %>%
-        layout(legend = list(orientation = "h", y = 1.1)) %>%
-        config(displayModeBar = FALSE)
+      plot_income_spend(df)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -877,8 +897,7 @@ server <- function(input, output, session) {
       df <- tab1_data()
       validate(need(nrow(df) >= 5,
                     "Not enough data for current selection. Broaden your filters."))
-      ggplotly(plot_age_hist(df)) %>%
-        config(displayModeBar = FALSE)
+      plot_age_hist(df)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -891,8 +910,7 @@ server <- function(input, output, session) {
       df <- tab1_data()
       validate(need(nrow(df) >= 5,
                     "Not enough data for current selection. Broaden your filters."))
-      ggplotly(plot_marital(df), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_marital(df)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -975,8 +993,7 @@ server <- function(input, output, session) {
   output$plot_spend_share <- renderPlotly({
     tryCatch({
       req(nrow(tab2_data()) > 0)
-      ggplotly(plot_spend_share(tab2_data()), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_spend_share(tab2_data())
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -986,8 +1003,7 @@ server <- function(input, output, session) {
   output$plot_spend_kids <- renderPlotly({
     tryCatch({
       req(nrow(tab2_data()) > 0)
-      ggplotly(plot_spend_kids(tab2_data()), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_spend_kids(tab2_data())
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -997,8 +1013,7 @@ server <- function(input, output, session) {
   output$plot_channels <- renderPlotly({
     tryCatch({
       req(nrow(tab2_data()) > 0)
-      ggplotly(plot_channels(tab2_data()), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_channels(tab2_data())
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -1023,8 +1038,7 @@ server <- function(input, output, session) {
 
   output$plot_camp_rates <- renderPlotly({
     tryCatch({
-      ggplotly(plot_campaign_rates(customers), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_campaign_rates(customers)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -1033,8 +1047,7 @@ server <- function(input, output, session) {
   })
   output$plot_responder_profile <- renderPlotly({
     tryCatch({
-      ggplotly(plot_responder_profile(customers), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_responder_profile(customers)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -1043,8 +1056,7 @@ server <- function(input, output, session) {
   })
   output$plot_recency <- renderPlotly({
     tryCatch({
-      ggplotly(plot_recency_response(customers), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_recency_response(customers)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -1053,8 +1065,7 @@ server <- function(input, output, session) {
   })
   output$plot_camp_history <- renderPlotly({
     tryCatch({
-      ggplotly(plot_camp_history_response(customers), tooltip = "text") %>%
-        config(displayModeBar = FALSE)
+      plot_camp_history_response(customers)
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error:", e$message),
@@ -1163,64 +1174,72 @@ server <- function(input, output, session) {
   # Feature importance bar chart
   output$ml_importance <- renderPlotly({
     imp <- model_metrics$lr_imp_df %>%
-      arrange(desc(importance)) %>%
+      arrange(importance) %>%
       mutate(
-        feature = factor(feature, levels = rev(feature)),
-        colour  = if_else(direction == "negative", "#ef4444", "#2d5016"),
-        label   = case_when(
-          feature == "CampaignHistory"   ~ "Campaign history",
-          feature == "Tenure"            ~ "Tenure",
-          feature == "Recency"           ~ "Recency (negative effect)",
-          feature == "HasChildren"       ~ "Has children (negative effect)",
-          feature == "DealsPct"          ~ "Deals %",
-          feature == "Education_n"       ~ "Education level",
-          feature == "NumWebVisitsMonth" ~ "Web visits / month",
-          feature == "TotalSpend"        ~ "Total spend",
-          feature == "Age"               ~ "Age",
-          feature == "Income"            ~ "Income",
-          feature == "SpendPerPurchase"  ~ "Spend per purchase",
-          TRUE                           ~ as.character(feature)
+        colour = if_else(direction == "negative", "#ef4444", "#2d5016"),
+        label  = case_when(
+          feature == "CampaignHistory"         ~ "Campaign history",
+          feature == "CampaignHistory_x_Recency" ~ "Campaign hist × Recency",
+          feature == "Tenure"                  ~ "Tenure",
+          feature == "Recency"                 ~ "Recency (negative effect)",
+          feature == "HasChildren"             ~ "Has children (negative effect)",
+          feature == "DealsPct"                ~ "Deals %",
+          feature == "Education_n"             ~ "Education level",
+          feature == "NumWebVisitsMonth"       ~ "Web visits / month",
+          feature == "TotalSpend"              ~ "Total spend",
+          feature == "Age"                     ~ "Age",
+          feature == "log_Income"              ~ "Log income",
+          feature == "SpendPerPurchase"        ~ "Spend per purchase",
+          TRUE                                 ~ as.character(feature)
         )
       )
 
-    p <- ggplot(imp, aes(x = feature, y = importance, fill = colour,
-                          text = paste0(label, "\nCoefficient magnitude: ",
-                                        round(importance, 3)))) +
-      geom_col() +
-      coord_flip() +
-      scale_x_discrete(labels = setNames(imp$label, as.character(imp$feature))) +
-      scale_fill_identity() +
-      scale_y_continuous(expand = expansion(mult = c(0, .15))) +
-      labs(x = NULL, y = "Coefficient magnitude (logistic regression)") +
-      theme_app()
-
-    ggplotly(p, tooltip = "text") %>% config(displayModeBar = FALSE)
+    plot_ly(imp,
+            x         = ~importance,
+            y         = ~label,
+            type      = "bar",
+            orientation = "h",
+            marker    = list(color = ~colour),
+            text      = ~paste0(label, "\nCoefficient magnitude: ", round(importance, 3)),
+            hoverinfo = "text") %>%
+      apply_layout(
+        xaxis = list(title = "Coefficient magnitude (logistic regression)"),
+        yaxis = list(title = "", categoryorder = "array", categoryarray = imp$label),
+        showlegend = FALSE
+      )
   })
 
   # ROC curve
   output$ml_roc <- renderPlotly({
     roc_df <- model_metrics$roc_df
+    lr_df  <- roc_df[roc_df$model == "Logistic Regression", ]
+    rf_df  <- roc_df[roc_df$model == "Random Forest", ]
 
-    p <- ggplot(roc_df, aes(x = fpr, y = tpr, colour = model,
-                             text = paste0(model,
-                                           "\nFPR: ", round(fpr, 3),
-                                           " | TPR: ", round(tpr, 3)))) +
-      geom_line(linewidth = 1.0) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed",
-                  colour = "#d1d5db") +
-      annotate("text", x = 0.68, y = 0.10,
-               label = paste0("LR AUC = ", round(model_metrics$lr_auc, 3),
-                              "\nRF AUC = ", round(model_metrics$rf_auc, 3)),
-               size = 3.5, colour = "#374151", hjust = 0) +
-      scale_colour_manual(values = c("Logistic Regression" = "#2d5016",
-                                     "Random Forest"       = "#a8c87a")) +
-      labs(x = "False positive rate", y = "True positive rate", colour = NULL) +
-      theme_app() +
-      theme(legend.position = "top")
-
-    ggplotly(p, tooltip = "text") %>%
-      layout(legend = list(orientation = "h", y = 1.1)) %>%
-      config(displayModeBar = FALSE)
+    plot_ly() %>%
+      add_lines(data = lr_df, x = ~fpr, y = ~tpr, name = "Logistic Regression",
+                line = list(color = "#2d5016", width = 2),
+                text = ~paste0("Logistic Regression\nFPR: ", round(fpr, 3),
+                               " | TPR: ", round(tpr, 3)),
+                hoverinfo = "text") %>%
+      add_lines(data = rf_df, x = ~fpr, y = ~tpr, name = "Random Forest",
+                line = list(color = "#a8c87a", width = 2),
+                text = ~paste0("Random Forest\nFPR: ", round(fpr, 3),
+                               " | TPR: ", round(tpr, 3)),
+                hoverinfo = "text") %>%
+      add_lines(x = c(0, 1), y = c(0, 1), name = "Random classifier",
+                line = list(color = "#d1d5db", dash = "dash", width = 1),
+                hoverinfo = "none", showlegend = FALSE) %>%
+      apply_layout(
+        xaxis = list(title = "False positive rate", range = c(0, 1)),
+        yaxis = list(title = "True positive rate",  range = c(0, 1)),
+        legend = list(orientation = "h", y = 1.08, x = 0),
+        annotations = list(list(
+          x = 0.68, y = 0.08, xref = "x", yref = "y", showarrow = FALSE,
+          text = paste0("LR AUC = ", round(model_metrics$lr_auc, 3),
+                        "<br>RF AUC = ", round(model_metrics$rf_auc, 3)),
+          font = list(color = "#374151", size = 12), align = "left"
+        ))
+      )
   })
 
   # Confusion matrix — recomputed from saved test-set probabilities at selected threshold
@@ -1246,17 +1265,29 @@ server <- function(input, output, session) {
       fill      = c("#dbeafe", "#fee2e2", "#fef9c3", "#f0fdf4")
     )
 
-    p <- ggplot(cm, aes(x = Predicted, y = Actual, fill = fill,
-                         text = paste0(label, "\nn = ", n))) +
-      geom_tile(colour = "white", linewidth = 1.5) +
-      geom_text(aes(label = n), size = 7, fontface = "bold",
-                colour = "#1f2937") +
-      scale_fill_identity() +
-      labs(x = "Predicted", y = "Actual") +
-      theme_app() +
-      theme(panel.grid = element_blank())
-
-    ggplotly(p, tooltip = "text") %>% config(displayModeBar = FALSE)
+    plot_ly(cm,
+            x         = ~Predicted,
+            y         = ~Actual,
+            z         = ~n,
+            type      = "heatmap",
+            colorscale = list(c(0, "#f0fdf4"), c(1, "#dbeafe")),
+            showscale  = FALSE,
+            text       = ~paste0(label, "\nn = ", n),
+            hoverinfo  = "text",
+            colors     = ~fill) %>%
+      add_annotations(
+        x    = ~Predicted,
+        y    = ~Actual,
+        text = ~as.character(n),
+        font = list(size = 22, color = "#1f2937"),
+        showarrow = FALSE
+      ) %>%
+      apply_layout(
+        xaxis = list(title = "Predicted", categoryorder = "array",
+                     categoryarray = c("Yes", "No")),
+        yaxis = list(title = "Actual", categoryorder = "array",
+                     categoryarray = c("No", "Yes"))
+      )
   })
 
   # Reset button
