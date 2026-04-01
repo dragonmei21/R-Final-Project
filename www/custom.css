@@ -1,0 +1,350 @@
+/* ═══════════════════════════════════════════════════════════════════
+   FreshMart Analytics — Store Theme
+   Grocery store aesthetic for Customer Personality Analysis dashboard
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Colour tokens ─────────────────────────────────────────────────── */
+:root {
+  --green-dark:   #2d5016;
+  --green-mid:    #3d6b1e;
+  --green-light:  #a8c87a;
+  --yellow:       #f5c842;
+  --yellow-light: #fdf3c0;
+  --cream:        #f7f3ed;
+  --kraft:        #e8dfd0;
+  --brown-mid:    #c9bfa8;
+  --brown-dark:   #7a6a52;
+  --ink:          #3d2b1a;
+  --red-notice:   #8b2020;
+}
+
+/* ── Page background ───────────────────────────────────────────────── */
+body {
+  background: var(--cream) !important;
+  color: var(--ink);
+}
+
+/* ── Awning stripe bar above navbar ───────────────────────────────── */
+.awning-bar {
+  height: 16px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--green-dark) 0px,
+    var(--green-dark) 28px,
+    var(--yellow)     28px,
+    var(--yellow)     56px
+  );
+}
+
+/* ── Navbar ────────────────────────────────────────────────────────── */
+.navbar {
+  background: var(--green-dark) !important;
+  border-bottom: 3px solid var(--yellow);
+  padding: 8px 24px;
+  font-family: 'Playfair Display', Georgia, serif;
+}
+.navbar-brand {
+  color: var(--yellow) !important;
+  font-size: 1.3rem;
+  font-style: italic;
+  letter-spacing: 0.03em;
+}
+.navbar-nav .nav-link {
+  color: var(--green-light) !important;
+  font-family: 'Lato', sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 14px !important;
+  border-bottom: 3px solid transparent;
+}
+.navbar-nav .nav-link.active,
+.navbar-nav .nav-link:hover {
+  color: var(--yellow) !important;
+  border-bottom: 3px solid var(--yellow);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ── Sub-banner (department line) ─────────────────────────────────── */
+.store-subbanner {
+  background: #1e3a0a;
+  color: var(--green-light);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 24px;
+  font-family: 'Lato', sans-serif;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────── */
+.sidebar-panel,
+.bslib-sidebar-layout > .sidebar {
+  background: var(--kraft) !important;
+  border-right: 1px solid var(--brown-mid) !important;
+  padding: 16px 14px !important;
+}
+
+/* Sidebar aisle sign */
+.sidebar-aisle-sign {
+  background: var(--green-dark);
+  color: var(--yellow);
+  text-align: center;
+  padding: 6px 10px;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  border-radius: 2px;
+  font-family: 'Lato', sans-serif;
+}
+
+/* Sidebar filter labels */
+.sidebar-panel .control-label,
+.sidebar-panel h6,
+.filter-section-label {
+  font-size: 0.68rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--brown-dark) !important;
+  font-family: 'Lato', sans-serif !important;
+  border-bottom: 1px solid var(--brown-mid);
+  padding-bottom: 4px;
+  margin-bottom: 8px !important;
+  font-weight: 400 !important;
+}
+
+/* Sidebar checkbox / radio chips */
+.sidebar-panel .checkbox label,
+.sidebar-panel .radio label {
+  font-size: 0.82rem;
+  color: var(--ink);
+  font-family: 'Lato', sans-serif;
+}
+.sidebar-panel .shiny-input-container {
+  margin-bottom: 10px;
+}
+
+/* Reset button — receipt strip style */
+.btn-reset-receipt {
+  width: 100%;
+  background: #fff9f0 !important;
+  border: 1px dashed var(--brown-mid) !important;
+  color: var(--brown-dark) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 2px !important;
+  padding: 8px !important;
+  margin-top: 12px;
+  line-height: 1.6;
+}
+.btn-reset-receipt:hover {
+  background: var(--yellow-light) !important;
+}
+
+/* ── Main content area ─────────────────────────────────────────────── */
+.tab-content-area {
+  padding: 20px 24px;
+  background: var(--cream);
+}
+
+/* Aisle sign above each chart section */
+.aisle-sign {
+  display: inline-block;
+  background: var(--green-dark);
+  color: var(--yellow);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 2px;
+  margin-bottom: 14px;
+  font-family: 'Lato', sans-serif;
+}
+
+/* ── Price tag KPI boxes ───────────────────────────────────────────── */
+.kpi-box {
+  background: #ffffff;
+  border: 1px solid var(--brown-mid);
+  border-radius: 3px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  text-align: center;
+  position: relative;
+  transition: transform 0.15s ease;
+}
+.kpi-box::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 10px;
+  background: var(--brown-mid);
+}
+.kpi-box:hover {
+  transform: translateY(-2px);
+}
+.kpi-value {
+  font-size: 1.9rem;
+  font-weight: 400;
+  color: var(--green-dark);
+  font-family: 'Playfair Display', Georgia, serif;
+  font-style: italic;
+  line-height: 1.1;
+}
+.kpi-label {
+  font-size: 0.68rem;
+  color: var(--brown-dark);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Lato', sans-serif;
+}
+
+/* ── Shelf containers (chart wrappers) ─────────────────────────────── */
+.shelf-card {
+  background: var(--kraft);
+  border: 1px solid var(--brown-mid);
+  border-radius: 3px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  position: relative;
+}
+/* Wooden shelf edge at the bottom */
+.shelf-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: var(--brown-mid);
+  border-radius: 0 0 3px 3px;
+}
+
+/* Chart section label within a shelf */
+.chart-subtitle {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brown-dark);
+  margin-bottom: 12px;
+  font-family: 'Lato', sans-serif;
+  border-bottom: 1px solid var(--brown-mid);
+  padding-bottom: 6px;
+}
+
+/* ── Chalkboard insight boxes ──────────────────────────────────────── */
+.insight-box {
+  background: #3a4a2a;
+  border: 2px solid #4a5a32;
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: #e8f0d0;
+  margin-top: 10px;
+  line-height: 1.6;
+  font-family: 'Lato', sans-serif;
+}
+.insight-box b,
+.insight-box strong {
+  color: var(--yellow);
+  font-weight: 400;
+}
+
+/* ── Red recall notice (warning boxes) ─────────────────────────────── */
+.warning-box {
+  background: #fff5f5;
+  border: 2px solid var(--red-notice);
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: var(--red-notice);
+  margin-top: 10px;
+  font-family: 'Lato', sans-serif;
+}
+.warning-box::before {
+  content: '\26A0 MANAGER NOTICE  ';
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.warning-box b,
+.warning-box strong {
+  color: var(--red-notice);
+}
+
+/* ── Plotly chart borders ──────────────────────────────────────────── */
+.js-plotly-plot {
+  border: 1px solid var(--brown-mid);
+  border-radius: 3px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+/* ── ML tab — label gun style probability display ──────────────────── */
+.probability-label {
+  background: var(--yellow);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 2.4rem;
+  font-weight: 400;
+  text-align: center;
+  padding: 16px;
+  border: 2px solid var(--brown-mid);
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.probability-label small {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brown-dark);
+  margin-top: 4px;
+}
+
+/* ── Slider inputs ─────────────────────────────────────────────────── */
+.irs--shiny .irs-bar,
+.irs--shiny .irs-from,
+.irs--shiny .irs-to,
+.irs--shiny .irs-single {
+  background: var(--green-dark) !important;
+  border-color: var(--green-dark) !important;
+}
+.irs--shiny .irs-handle {
+  border-color: var(--green-dark) !important;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────── */
+.shiny-spinner-output-container .spinner-border {
+  color: var(--green-dark) !important;
+}
+
+/* ── About tab hero ────────────────────────────────────────────────── */
+.store-hero-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 2rem;
+  color: var(--green-dark);
+  font-style: italic;
+  margin-bottom: 6px;
+}
+.store-hero-sub {
+  font-size: 0.85rem;
+  color: var(--brown-dark);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .bslib-sidebar-layout > .sidebar { display: none; }
+}
